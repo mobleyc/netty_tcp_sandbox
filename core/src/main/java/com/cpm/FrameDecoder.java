@@ -8,30 +8,12 @@ import java.nio.charset.StandardCharsets;
 
 /**
  * Converts a stream of bytes to a Frame.
- *
- * Frame:
- *
- * All frames begin with a fixed 3-octet header followed by a variable length payload.
- *
- * +--------------------------+
- * | Length (16)              |
- * +-------------+------------+
- * | Type (8)    |
- * +-------------+-------------------------------------------------+
- * | Payload (0...)                                                |
- * +---------------------------------------------------------------+
- *
- * The fields of the frame header are defined as follows:
- *   1. Length - The length of the frame payload expressed as an unsigned 16-bit integer. The value of this field
- *               does not include the header length.
- *   2. Type   - The 8-bit type of the frame. The frame type determines the format and semantics
- *               of the frame.
  */
 public class FrameDecoder extends LengthFieldBasedFrameDecoder {
 
     private static int LENGTH_FIELD_OFFSET = 0;
     private static int LENGTH_FIELD_LENGTH = 2;
-    private static int TOTAL_HEADER_LENGTH = 3;
+    private static int TOTAL_HEADER_LENGTH = 5;
     private static int INITIAL_BYTES_TO_STRIP = 2;
 
     public FrameDecoder() {
@@ -47,8 +29,9 @@ public class FrameDecoder extends LengthFieldBasedFrameDecoder {
         }
 
         byte frameType = frame.readByte();
+        int streamId = frame.readUnsignedShort();
         String payload = frame.toString(StandardCharsets.US_ASCII);
 
-        return new Frame(frameType, payload);
+        return new Frame(frameType, streamId, payload);
     }
 }

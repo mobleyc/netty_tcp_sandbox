@@ -29,11 +29,12 @@ public class FrameDecoderTest {
     public void Should_read_single_frame() {
         ByteBuf incoming = Unpooled.buffer();
 
-        incoming.writeBytes(DatatypeConverter.parseHexBinary("00040074657374"));
+        incoming.writeBytes(DatatypeConverter.parseHexBinary("000400000174657374"));
         channel.writeInbound(incoming);
 
         Frame r = (Frame) channel.readInbound();
         assertEquals(FrameType.REQUEST, r.getType());
+        assertEquals(1, r.getStreamId());
         assertEquals("test", r.getPayload());
 
         assertNull(channel.readInbound());
@@ -48,7 +49,7 @@ public class FrameDecoderTest {
 
         ByteBuf incoming2 = Unpooled.buffer();
         // payload=test
-        incoming2.writeBytes(DatatypeConverter.parseHexBinary("74657374"));
+        incoming2.writeBytes(DatatypeConverter.parseHexBinary("000174657374"));
         channel.writeInbound(incoming2);
 
         Frame r = (Frame) channel.readInbound();
@@ -64,7 +65,7 @@ public class FrameDecoderTest {
         // two of the same messages:
         //     length=4, type=0x0 payload=test
         incoming.writeBytes(
-                DatatypeConverter.parseHexBinary("0004007465737400040074657374"));
+                DatatypeConverter.parseHexBinary("000400000174657374000400000174657374"));
         channel.writeInbound(incoming);
 
         Frame r = (Frame) channel.readInbound();

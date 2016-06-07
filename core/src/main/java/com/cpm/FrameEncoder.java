@@ -18,6 +18,7 @@ public class FrameEncoder extends MessageToByteEncoder<Frame> {
         int messageLength = response.getPayload().length();
         byteBuf.writeShort(messageLength);
         byteBuf.writeByte(response.getType());
+        byteBuf.writeShort(response.getStreamId());
         byteBuf.writeBytes(response.getPayload().getBytes(StandardCharsets.US_ASCII));
     }
 }

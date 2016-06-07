@@ -28,7 +28,7 @@ public class FrameEncoderTest {
 
     @Test
     public void Should_encode_response() {
-        Frame r = new Frame(FrameType.REQUEST, "test");
+        Frame r = new Frame(FrameType.REQUEST, 1, "test");
         channel.writeOutbound(r);
 
         ByteBuf byteBuf = (ByteBuf) channel.readOutbound();
@@ -38,14 +38,14 @@ public class FrameEncoderTest {
         aggregatedBuffer.writeBytes(byteBuf);
         aggregatedBuffer.resetReaderIndex();
 
-        assertEquals("00040074657374",
+        assertEquals("000400000174657374",
                 ByteBufUtil.hexDump(aggregatedBuffer));
     }
 
     @Test
     @Ignore
     public void Test_encode() {
-        Frame r = new Frame(FrameType.REQUEST, "test");
+        Frame r = new Frame(FrameType.REQUEST, 1, "test");
         channel.writeOutbound(r);
 
         ByteBuf byteBuf = (ByteBuf) channel.readOutbound();

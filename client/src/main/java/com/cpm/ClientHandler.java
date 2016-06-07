@@ -4,6 +4,9 @@ package com.cpm;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 
+// ChannelDuplexHandler
+// Future<Response> send(Query q)
+
 public class ClientHandler extends ChannelInboundHandlerAdapter {
 
     @Override

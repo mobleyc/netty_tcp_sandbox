@@ -33,6 +33,8 @@ public class Client {
                             ChannelPipeline p = ch.pipeline();
 
                             //p.addLast(new LoggingHandler(LogLevel.INFO));
+                            ch.pipeline().addLast(new FrameEncoder());
+                            ch.pipeline().addLast(new FrameDecoder());
                             p.addLast(new ClientHandler());
                         }
                     });
@@ -43,7 +45,7 @@ public class Client {
         }
     }
 
-    // Test max message length
+    // TODO: Test max message length
     public static void main(String[] args) throws Exception {
         if (args.length != 2) {
             System.err.println(
