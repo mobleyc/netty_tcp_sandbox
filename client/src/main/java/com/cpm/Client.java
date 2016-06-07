@@ -1,61 +1,63 @@
 package com.cpm;
 
-import io.netty.bootstrap.Bootstrap;
-import io.netty.channel.ChannelFuture;
-import io.netty.channel.ChannelInitializer;
-import io.netty.channel.ChannelPipeline;
-import io.netty.channel.EventLoopGroup;
-import io.netty.channel.nio.NioEventLoopGroup;
-import io.netty.channel.socket.SocketChannel;
-import io.netty.channel.socket.nio.NioSocketChannel;
 
-import java.net.InetSocketAddress;
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelFutureListener;
 
+import java.util.Iterator;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentMap;
+
+//TODO: Add heartbeats
 public class Client {
-    private String host;
-    private int port;
 
-    public Client(String host, int port) {
-        this.host = host;
-        this.port = port;
+    private final Channel channel;
+    private final ConcurrentMap<Integer, CompletableFuture<Frame>> pending;
+
+    public Client(Channel channel, ConcurrentMap<Integer, CompletableFuture<Frame>> pending) {
+        this.channel = channel;
+        this.pending = pending;
+
+        channel.closeFuture().addListener((ChannelFutureListener) channelFuture -> {
+            errorOutPending(new ClientException("Connection being closed.", channelFuture.cause()));
+        });
     }
 
-    public void run() throws Exception {
-        EventLoopGroup group = new NioEventLoopGroup();
-        try {
-            Bootstrap b = new Bootstrap();
-            b.group(group)
-                    .channel(NioSocketChannel.class)
-                    .remoteAddress(new InetSocketAddress(host, port))
-                    .handler(new ChannelInitializer<SocketChannel>() {
-                        @Override
-                        public void initChannel(SocketChannel ch) throws Exception {
-                            ChannelPipeline p = ch.pipeline();
+    public CompletableFuture<Frame> send(Frame query) {
 
-                            //p.addLast(new LoggingHandler(LogLevel.INFO));
-                            ch.pipeline().addLast(new FrameEncoder());
-                            ch.pipeline().addLast(new FrameDecoder());
-                            p.addLast(new ClientHandler());
-                        }
-                    });
-            ChannelFuture f = b.connect(host, port).sync();
-            f.channel().closeFuture().sync();
-        } finally {
-            group.shutdownGracefully().sync();
+        CompletableFuture<Frame> outboundF = new CompletableFuture<>();
+        if(!channel.isWritable()) {
+            outboundF.completeExceptionally(new ClientException("Channel is not in a writeable state. This usually " +
+                    "indicates the channel was closed."));
+            return outboundF;
         }
+
+        CompletableFuture<Frame> old = pending.put(query.getStreamId(), outboundF);
+        if (null != old) {
+            throw new IllegalStateException("Unexpected state. A pending request was overwritten by a " +
+                    "new request. Stream Id: " + query.getStreamId());
+        }
+
+        channel.writeAndFlush(query).addListener((ChannelFutureListener) writeFuture -> {
+            if (!writeFuture.isSuccess()) {
+                errorOutPending(new ClientException("Error sending message to server.", writeFuture.cause()));
+                close();
+            }
+        });
+
+        return outboundF;
     }
 
-    // TODO: Test max message length
-    public static void main(String[] args) throws Exception {
-        if (args.length != 2) {
-            System.err.println(
-                    "Usage: " + Client.class.getSimpleName() + " <host> <port>");
-            return;
+    public void close() {
+        channel.close().syncUninterruptibly();
+    }
+
+    private void errorOutPending(ClientException exception) {
+        Iterator<CompletableFuture<Frame>> it = pending.values().iterator();
+        while (it.hasNext()) {
+            CompletableFuture<Frame> pendingF = it.next();
+            pendingF.completeExceptionally(exception);
+            it.remove();
         }
-
-        final String host = args[0];
-        final int port = Integer.parseInt(args[1]);
-
-        new Client(host, port).run();
     }
 }

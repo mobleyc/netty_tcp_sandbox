@@ -10,6 +10,7 @@ public class FrameServerHandler extends SimpleChannelInboundHandler<Frame> {
 
     @Override
     protected void channelRead0(ChannelHandlerContext channelHandlerContext, Frame request) throws Exception {
-        channelHandlerContext.writeAndFlush(new Frame(FrameType.REPLY, 0, "test"));
+        System.out.println("Server received frame: " + request);
+        channelHandlerContext.writeAndFlush(new Frame(FrameType.REPLY, request.getStreamId(), "test reply"));
     }
 }
