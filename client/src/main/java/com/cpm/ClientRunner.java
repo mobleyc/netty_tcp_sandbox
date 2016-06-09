@@ -25,7 +25,10 @@ public class ClientRunner {
         Client client = null;
         try {
             client = ctx.connect(new InetSocketAddress(host, port));
-            runSend(client, 30, 1, TimeUnit.SECONDS);
+            System.out.println("Connected");
+            Thread.sleep(TimeUnit.SECONDS.toMillis(5));
+
+            runSend(client, 10);
         } finally {
             if (null != client) {
                 client.close();
@@ -35,14 +38,10 @@ public class ClientRunner {
         }
     }
 
-    private static void runSend(Client client, int numberOfTimes, int sleepInterval,
-                                TimeUnit unit) throws InterruptedException {
+    private static void runSend(Client client, int numberOfTimes) throws InterruptedException {
         List<CompletableFuture<Frame>> buffer = new ArrayList<>();
         for (int i = 0; i < numberOfTimes; i++) {
-            System.out.println("Sending: " + i);
             buffer.add(client.send(new Frame(FrameType.REQUEST, i, "test request")));
-            System.out.println("Pausing.");
-            Thread.sleep(unit.toMillis(sleepInterval));
         }
 
         for (CompletableFuture<Frame> f : buffer) {
@@ -51,7 +50,7 @@ public class ClientRunner {
                 System.out.println("Received frame: " + response);
                 System.out.println("Received frame payload: " + response.getPayload());
             } catch (InterruptedException | ExecutionException | TimeoutException e) {
-                e.printStackTrace();
+                e.printStackTrace(System.out);
             }
         }
     }
