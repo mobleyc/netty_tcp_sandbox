@@ -21,20 +21,20 @@ public class ClientRunner {
         final String host = args[0];
         final int port = Integer.parseInt(args[1]);
 
-        Context ctx = new Context();
+        ClientBuilder builder = new ClientBuilder();
         Client client = null;
         try {
-            client = ctx.connect(new InetSocketAddress(host, port));
+            client = builder.connect(new InetSocketAddress(host, port), 20 /*heartbeat seconds*/);
             System.out.println("Connected");
-            Thread.sleep(TimeUnit.SECONDS.toMillis(5));
+            Thread.sleep(TimeUnit.SECONDS.toMillis(65));
 
-            runSend(client, 10);
+            //runSend(client, 10);
         } finally {
             if (null != client) {
                 client.close();
                 client.close();
             }
-            ctx.shutdown();
+            builder.shutdown();
         }
     }
 
