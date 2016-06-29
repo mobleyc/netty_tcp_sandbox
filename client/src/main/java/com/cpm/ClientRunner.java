@@ -1,5 +1,8 @@
 package com.cpm;
 
+import io.netty.util.internal.logging.InternalLoggerFactory;
+import io.netty.util.internal.logging.Slf4JLoggerFactory;
+
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.List;
@@ -18,13 +21,16 @@ public class ClientRunner {
             return;
         }
 
+        InternalLoggerFactory.setDefaultFactory(new Slf4JLoggerFactory());
+
         final String host = args[0];
         final int port = Integer.parseInt(args[1]);
 
         ClientBuilder builder = new ClientBuilder();
         Client client = null;
         try {
-            client = builder.connect(new InetSocketAddress(host, port), 20 /*heartbeat seconds*/);
+            client = builder.connect(new InetSocketAddress(host, port), 1000 /*max pending limit*/,
+                    20 /*heartbeat seconds*/);
             System.out.println("Connected");
             Thread.sleep(TimeUnit.SECONDS.toMillis(65));
 

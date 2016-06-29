@@ -3,6 +3,7 @@ package com.cpm;
 public class Frame {
 
     public static final Frame PING = new Frame(FrameType.PING, 0, "ping");
+    //TODO: It would be better to add a flags field to frame header and use that for PING ACK
     public static final Frame PING_ACK = new Frame(FrameType.PING, 0, "ping ack");
 
     public static final short LENGTH_SIZE = 2;

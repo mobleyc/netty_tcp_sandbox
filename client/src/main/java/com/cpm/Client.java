@@ -4,6 +4,8 @@ package com.cpm;
 import io.netty.channel.*;
 import io.netty.handler.timeout.IdleStateEvent;
 import io.netty.handler.timeout.IdleStateHandler;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.net.InetSocketAddress;
 import java.util.Iterator;
@@ -15,21 +17,26 @@ import static io.netty.handler.timeout.IdleState.ALL_IDLE;
 
 public class Client {
 
+    private static final Logger logger = LoggerFactory.getLogger(Client.class);
+
     private final Channel channel;
     private final InetSocketAddress address;
-    //TODO: Add outstanding request limit
+    private final int pendingRequestLimit;
+
+    //TODO: Review concurrencyLevel configuration
     private final ConcurrentMap<Integer, CompletableFuture<Frame>> pending = new ConcurrentHashMap<>();
 
-    public Client(Channel channel, InetSocketAddress address, int heartBeatIntervalSeconds) {
+    public Client(Channel channel, InetSocketAddress address, int pendingRequestLimit, int heartBeatIntervalSeconds) {
         this.channel = channel;
         this.address = address;
+        this.pendingRequestLimit = pendingRequestLimit;
 
         ChannelPipeline p = channel.pipeline();
         p.addLast("idleStateHandler", new IdleStateHandler(0, 0, heartBeatIntervalSeconds));
         p.addLast(new Client.ClientConnectionHandler(pending));
 
         channel.closeFuture().addListener((ChannelFutureListener) channelFuture -> {
-            System.out.println("Connection closed");
+            logger.debug("Connection closed");
             clearPending(new ConnectionException(address, "Connection closed."));
         });
     }
@@ -43,17 +50,24 @@ public class Client {
         CompletableFuture<Frame> outboundF = new CompletableFuture<>();
         CompletableFuture<Frame> old = pending.put(query.getStreamId(), outboundF);
         if (null != old) {
-            throw new IllegalStateException("Unexpected state. A pending request was overwritten by a " +
-                    "new request. Stream Id: " + query.getStreamId());
+            close();
+            clearPending(new ClientException(new IllegalStateException("Unexpected state. A pending request was " +
+                    "overwritten by a new request. Stream Id: " + query.getStreamId())));
+        }
+
+        //TODO: Use AtomicInteger. ConcurrentHashMap.size() is transient and not synchronized.
+        //    ref: https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/ConcurrentHashMap.html
+        if (pending.size() >= pendingRequestLimit) {
+            close();
+            clearPending(new ClientException("Too many pending requests"));
         }
 
         channel.writeAndFlush(query).addListener((ChannelFutureListener) writeFuture -> {
             if (!writeFuture.isSuccess()) {
-                //TODO: Replace with logging
-                System.out.println("Client write failed");
+                logger.debug("Client write failed");
+                close();
                 clearPending(new ConnectionException(address, "Attempted to write to a closed connection",
                         writeFuture.cause()));
-                close();
             }
         });
 
@@ -65,8 +79,7 @@ public class Client {
     }
 
     private void clearPending(ClientException exception) {
-        //TODO: Replace with logging
-        System.out.println("Enter clearPending. Total pending: " + pending.size());
+        logger.debug("Enter clearPending. Total pending: " + pending.size());
 
         Iterator<CompletableFuture<Frame>> it = pending.values().iterator();
         while (it.hasNext()) {
@@ -90,7 +103,6 @@ public class Client {
 
             CompletableFuture<Frame> inboundF = pending.remove(inbound.getStreamId());
             if (null == inboundF) {
-                //TODO: Revisit and add logging. Determine if connection should remain open?
                 throw new RuntimeException("Not Implemented yet. Received message for unknown stream id.");
             }
 
@@ -99,7 +111,6 @@ public class Client {
 
         @Override
         public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-            //TODO: Review. Should connection close when an exception is raised?
             cause.printStackTrace();
             ctx.close();
         }
@@ -109,16 +120,16 @@ public class Client {
 
             boolean isAllIdle = evt instanceof IdleStateEvent && ((IdleStateEvent) evt).state() == ALL_IDLE;
             if (!isAllIdle) {
-                System.out.println("Event received and skipped: " + evt);
+                logger.debug("Event received and skipped: " + evt);
                 return;
             }
 
             boolean isWriteable = ctx.channel().isWritable();
             if (!isWriteable) {
-                System.out.println("Received idle state event, but connection is closed. Heartbeat message will not be sent.");
+                logger.debug("Received idle state event, but connection is closed. Heartbeat message will not be sent.");
             }
 
-            System.out.println("Sending heartbeat message");
+            logger.debug("Sending heartbeat message");
             send(Frame.PING);
         }
     }

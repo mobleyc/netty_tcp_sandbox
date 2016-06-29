@@ -22,22 +22,22 @@ public class ClientBuilder {
     private final EventLoopGroup group = new NioEventLoopGroup(0, threadFactory("nio-worker"));
 
     //TODO: Add setting for connection timeout
-    public Client connect(InetSocketAddress address, int heartBeatIntervalSeconds) {
+    public Client connect(InetSocketAddress address, int pendingRequestLimit, int heartBeatIntervalSeconds) {
         try {
-            return Uninterruptibles.getUninterruptibly(connectAsync(address, heartBeatIntervalSeconds));
+            return Uninterruptibles.getUninterruptibly(connectAsync(address, pendingRequestLimit, heartBeatIntervalSeconds));
         } catch (ExecutionException e) {
             throw new ClientException(e.getMessage());
         }
     }
 
-    public CompletableFuture<Client> connectAsync(InetSocketAddress address, int heartBeatIntervalSeconds) {
+    public CompletableFuture<Client> connectAsync(InetSocketAddress address, int pendingRequestLimit, int heartBeatIntervalSeconds) {
         CompletableFuture<Client> result = new CompletableFuture<>();
 
         Bootstrap b = createBootstrap(address);
         ChannelFuture cf = b.connect();
         cf.addListener((ChannelFutureListener) future -> {
             if (future.isSuccess()) {
-                result.complete(new Client(future.channel(), address, heartBeatIntervalSeconds));
+                result.complete(new Client(future.channel(), address, pendingRequestLimit, heartBeatIntervalSeconds));
             } else {
                 result.completeExceptionally(future.cause());
             }
