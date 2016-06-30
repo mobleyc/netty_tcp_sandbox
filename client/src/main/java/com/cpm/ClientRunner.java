@@ -3,6 +3,8 @@ package com.cpm;
 import com.google.common.base.Stopwatch;
 import io.netty.util.internal.logging.InternalLoggerFactory;
 import io.netty.util.internal.logging.Slf4JLoggerFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
@@ -14,7 +16,8 @@ import java.util.concurrent.TimeoutException;
 
 public class ClientRunner {
 
-    // TODO: Test max message length
+    private static final Logger logger = LoggerFactory.getLogger(ClientRunner.class);
+
     public static void main(String[] args) throws Exception {
         if (args.length != 2) {
             System.err.println(
@@ -35,13 +38,13 @@ public class ClientRunner {
         try {
             client = builder.connect(new InetSocketAddress(host, port),
                     5000 /*Connection timeout in millis*/,
-                    1000 /*max pending limit*/,
+                    10 /*max pending limit*/,
                     20   /*heartbeat seconds*/);
             watch.stop();
             System.out.println("Connected. Time to connect: " + watch.elapsed(TimeUnit.SECONDS) + " second(s)");
             Thread.sleep(TimeUnit.SECONDS.toMillis(65));
 
-            //runSend(client, 10);
+            runSend(client, 110);
         } finally {
             if(watch.isRunning()) {
                 watch.stop();
@@ -58,8 +61,13 @@ public class ClientRunner {
 
     private static void runSend(Client client, int numberOfTimes) throws InterruptedException {
         List<CompletableFuture<Frame>> buffer = new ArrayList<>();
-        for (int i = 0; i < numberOfTimes; i++) {
-            buffer.add(client.send(new Frame(FrameType.REQUEST, i, "test request")));
+
+        try {
+            for (int i = 0; i < numberOfTimes; i++) {
+                buffer.add(client.send(new Frame(FrameType.REQUEST, i, "test request")));
+            }
+        } catch (ClientException cex) {
+            logger.error("Error sending: ", cex);
         }
 
         for (CompletableFuture<Frame> f : buffer) {
@@ -68,7 +76,7 @@ public class ClientRunner {
                 System.out.println("Received frame: " + response);
                 System.out.println("Received frame payload: " + response.getPayload());
             } catch (InterruptedException | ExecutionException | TimeoutException e) {
-                e.printStackTrace(System.out);
+                logger.error("Error getting response: ", e);
             }
         }
     }

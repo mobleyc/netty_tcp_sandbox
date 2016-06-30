@@ -23,6 +23,9 @@ public class Client {
     private final InetSocketAddress address;
     private final int pendingRequestLimit;
 
+    //Can be updated by IO thread (e.g. in Future callback handlers) or by client thread
+    private volatile ClientException closeReason = null;
+
     //TODO: Review concurrencyLevel configuration
     private final ConcurrentMap<Integer, CompletableFuture<Frame>> pending = new ConcurrentHashMap<>();
 
@@ -37,7 +40,10 @@ public class Client {
 
         channel.closeFuture().addListener((ChannelFutureListener) channelFuture -> {
             logger.debug("Connection closed");
-            clearPending(new ConnectionException(address, "Connection closed."));
+            if (null == closeReason) {
+                closeReason = new ConnectionException(address, "Connection closed.");
+            }
+            clearPending(closeReason);
         });
     }
 
@@ -50,24 +56,26 @@ public class Client {
         CompletableFuture<Frame> outboundF = new CompletableFuture<>();
         CompletableFuture<Frame> old = pending.put(query.getStreamId(), outboundF);
         if (null != old) {
+            logger.debug("Unexpected state on pending.put");
+            closeReason = new ClientException(new IllegalStateException("Unexpected state. A pending request was " +
+                    "overwritten by a new request. Stream Id: " + query.getStreamId()));
             close();
-            clearPending(new ClientException(new IllegalStateException("Unexpected state. A pending request was " +
-                    "overwritten by a new request. Stream Id: " + query.getStreamId())));
         }
 
         //TODO: Use AtomicInteger. ConcurrentHashMap.size() is transient and not synchronized.
         //    ref: https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/ConcurrentHashMap.html
         if (pending.size() >= pendingRequestLimit) {
+            logger.debug("Max limit reached");
+            closeReason = new ClientException("Max pending request limit reached.");
             close();
-            clearPending(new ClientException("Too many pending requests"));
         }
 
         channel.writeAndFlush(query).addListener((ChannelFutureListener) writeFuture -> {
             if (!writeFuture.isSuccess()) {
                 logger.debug("Client write failed");
+                closeReason = new ConnectionException(address, "Attempted to write to a closed connection",
+                        writeFuture.cause());
                 close();
-                clearPending(new ConnectionException(address, "Attempted to write to a closed connection",
-                        writeFuture.cause()));
             }
         });
 
