@@ -12,9 +12,14 @@ import java.util.Iterator;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static io.netty.handler.timeout.IdleState.ALL_IDLE;
 
+/**
+ * This class can be called by both the client thread pool and the Netty IO thread pool. In general
+ * the Netty IO thread pool calls the Future listener code blocks.
+ */
 public class Client {
 
     private static final Logger logger = LoggerFactory.getLogger(Client.class);
@@ -25,6 +30,10 @@ public class Client {
 
     //Can be updated by IO thread (e.g. in Future callback handlers) or by client thread
     private volatile ClientException closeReason = null;
+
+    //ConcurrentHashMap.size() is transient and not synchronized.
+    //    ref: ref: https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/ConcurrentHashMap.html
+    private final AtomicInteger pendingRequestCounter = new AtomicInteger();
 
     //TODO: Review concurrencyLevel configuration
     private final ConcurrentMap<Integer, CompletableFuture<Frame>> pending = new ConcurrentHashMap<>();
@@ -50,7 +59,17 @@ public class Client {
     public CompletableFuture<Frame> send(Frame query) {
 
         if (!channel.isWritable()) {
+            //pending future's should already be drained at this point
             throw new ConnectionException(address, "Attempted to write to a closed connection");
+        }
+
+
+        if (!tryIncrementPending()) {
+            logger.debug("Max limit reached");
+            closeReason = new ClientException("Max pending request limit reached.");
+            close();
+
+            throw closeReason;
         }
 
         CompletableFuture<Frame> outboundF = new CompletableFuture<>();
@@ -59,14 +78,6 @@ public class Client {
             logger.debug("Unexpected state on pending.put");
             closeReason = new ClientException(new IllegalStateException("Unexpected state. A pending request was " +
                     "overwritten by a new request. Stream Id: " + query.getStreamId()));
-            close();
-        }
-
-        //TODO: Use AtomicInteger. ConcurrentHashMap.size() is transient and not synchronized.
-        //    ref: https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/ConcurrentHashMap.html
-        if (pending.size() >= pendingRequestLimit) {
-            logger.debug("Max limit reached");
-            closeReason = new ClientException("Max pending request limit reached.");
             close();
         }
 
@@ -82,12 +93,23 @@ public class Client {
         return outboundF;
     }
 
+    private boolean tryIncrementPending() {
+        int pending;
+        do {
+            pending = pendingRequestCounter.get();
+            if (pending >= pendingRequestLimit) {
+                return false;
+            }
+        } while (!pendingRequestCounter.compareAndSet(pending, pending + 1));
+        return true;
+    }
+
     public void close() {
         channel.close().syncUninterruptibly();
     }
 
     private void clearPending(ClientException exception) {
-        logger.debug("Enter clearPending. Total pending: " + pending.size());
+        logger.debug("Enter clearPending. Total pending: " + pendingRequestCounter.get());
 
         Iterator<CompletableFuture<Frame>> it = pending.values().iterator();
         while (it.hasNext()) {
@@ -95,8 +117,13 @@ public class Client {
             pendingF.completeExceptionally(exception);
             it.remove();
         }
+
+        pendingRequestCounter.set(0);
     }
 
+    /**
+     * This class is called by the Netty IO thread pool. One instance is created per Channel.
+     */
     class ClientConnectionHandler extends ChannelInboundHandlerAdapter {
         //TODO: Add metrics
         private final ConcurrentMap<Integer, CompletableFuture<Frame>> pending;
@@ -111,8 +138,12 @@ public class Client {
 
             CompletableFuture<Frame> inboundF = pending.remove(inbound.getStreamId());
             if (null == inboundF) {
-                throw new RuntimeException("Not Implemented yet. Received message for unknown stream id.");
+                closeReason = new ClientException(new IllegalStateException("Received message for unknown stream id. " +
+                        "Stream Id: " + inbound.getStreamId()));
+                close();
             }
+
+            pendingRequestCounter.decrementAndGet();
 
             inboundF.complete(inbound);
         }
