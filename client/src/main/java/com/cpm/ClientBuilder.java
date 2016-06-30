@@ -21,19 +21,21 @@ public class ClientBuilder {
      */
     private final EventLoopGroup group = new NioEventLoopGroup(0, threadFactory("nio-worker"));
 
-    //TODO: Add setting for connection timeout
-    public Client connect(InetSocketAddress address, int pendingRequestLimit, int heartBeatIntervalSeconds) {
+    public Client connect(InetSocketAddress address, int connectTimeoutMilliseconds, int pendingRequestLimit,
+                          int heartBeatIntervalSeconds) {
         try {
-            return Uninterruptibles.getUninterruptibly(connectAsync(address, pendingRequestLimit, heartBeatIntervalSeconds));
+            return Uninterruptibles.getUninterruptibly(connectAsync(address, connectTimeoutMilliseconds,
+                    pendingRequestLimit, heartBeatIntervalSeconds));
         } catch (ExecutionException e) {
             throw new ClientException(e.getMessage());
         }
     }
 
-    public CompletableFuture<Client> connectAsync(InetSocketAddress address, int pendingRequestLimit, int heartBeatIntervalSeconds) {
+    public CompletableFuture<Client> connectAsync(InetSocketAddress address, int connectTimeoutMilliseconds,
+                                                  int pendingRequestLimit, int heartBeatIntervalSeconds) {
         CompletableFuture<Client> result = new CompletableFuture<>();
 
-        Bootstrap b = createBootstrap(address);
+        Bootstrap b = createBootstrap(address, connectTimeoutMilliseconds);
         ChannelFuture cf = b.connect();
         cf.addListener((ChannelFutureListener) future -> {
             if (future.isSuccess()) {
@@ -50,10 +52,11 @@ public class ClientBuilder {
         group.shutdownGracefully().syncUninterruptibly();
     }
 
-    private Bootstrap createBootstrap(InetSocketAddress address) {
+    private Bootstrap createBootstrap(InetSocketAddress address, int connectTimeoutMilliseconds) {
         Bootstrap b = new Bootstrap();
         b.group(group)
                 .channel(NioSocketChannel.class)
+                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, connectTimeoutMilliseconds)
                 .remoteAddress(address)
                 .handler(new ChannelInitializer<SocketChannel>() {
                     @Override

@@ -1,5 +1,6 @@
 package com.cpm;
 
+import com.google.common.base.Stopwatch;
 import io.netty.util.internal.logging.InternalLoggerFactory;
 import io.netty.util.internal.logging.Slf4JLoggerFactory;
 
@@ -26,16 +27,27 @@ public class ClientRunner {
         final String host = args[0];
         final int port = Integer.parseInt(args[1]);
 
+
         ClientBuilder builder = new ClientBuilder();
         Client client = null;
+
+        Stopwatch watch = Stopwatch.createStarted();
         try {
-            client = builder.connect(new InetSocketAddress(host, port), 1000 /*max pending limit*/,
-                    20 /*heartbeat seconds*/);
-            System.out.println("Connected");
+            client = builder.connect(new InetSocketAddress(host, port),
+                    5000 /*Connection timeout in millis*/,
+                    1000 /*max pending limit*/,
+                    20   /*heartbeat seconds*/);
+            watch.stop();
+            System.out.println("Connected. Time to connect: " + watch.elapsed(TimeUnit.SECONDS) + " second(s)");
             Thread.sleep(TimeUnit.SECONDS.toMillis(65));
 
             //runSend(client, 10);
         } finally {
+            if(watch.isRunning()) {
+                watch.stop();
+                System.out.println("Time wait to connect: " + watch.elapsed(TimeUnit.SECONDS) + " second(s)");
+            }
+
             if (null != client) {
                 client.close();
                 client.close();
