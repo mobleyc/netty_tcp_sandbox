@@ -19,17 +19,18 @@ public class ClientRunner {
     private static final Logger logger = LoggerFactory.getLogger(ClientRunner.class);
 
     public static void main(String[] args) throws Exception {
+        String host;
+        int port;
+
         if (args.length != 2) {
-            System.err.println(
-                    "Usage: " + ClientRunner.class.getSimpleName() + " <host> <port>");
-            return;
+            host = "localhost";
+            port = 8080;
+        } else {
+            host = args[0];
+            port = Integer.parseInt(args[1]);
         }
 
         InternalLoggerFactory.setDefaultFactory(new Slf4JLoggerFactory());
-
-        final String host = args[0];
-        final int port = Integer.parseInt(args[1]);
-
 
         ClientBuilder builder = new ClientBuilder();
         Client client = null;
@@ -38,17 +39,17 @@ public class ClientRunner {
         try {
             client = builder.connect(new InetSocketAddress(host, port),
                     5000 /*Connection timeout in millis*/,
-                    10 /*max pending limit*/,
+                    1000   /*max pending limit*/,
                     20   /*heartbeat seconds*/);
             watch.stop();
-            System.out.println("Connected. Time to connect: " + watch.elapsed(TimeUnit.SECONDS) + " second(s)");
-            Thread.sleep(TimeUnit.SECONDS.toMillis(65));
+            logger.debug("Connected. Time to connect: " + watch.elapsed(TimeUnit.SECONDS) + " second(s)");
 
-            runSend(client, 110);
+            //runSend(client, 110);
+            runContinuousSend(client);
         } finally {
-            if(watch.isRunning()) {
+            if (watch.isRunning()) {
                 watch.stop();
-                System.out.println("Time wait to connect: " + watch.elapsed(TimeUnit.SECONDS) + " second(s)");
+                logger.debug("Time wait to connect: " + watch.elapsed(TimeUnit.SECONDS) + " second(s)");
             }
 
             if (null != client) {
@@ -63,7 +64,8 @@ public class ClientRunner {
         List<CompletableFuture<Frame>> buffer = new ArrayList<>();
 
         try {
-            for (int i = 0; i < numberOfTimes; i++) {
+            for (int i = 1; i <= numberOfTimes; i++) {
+                logger.debug("Send frame #: " + i);
                 buffer.add(client.send(new Frame(FrameType.REQUEST, i, "test request")));
             }
         } catch (ClientException cex) {
@@ -73,11 +75,23 @@ public class ClientRunner {
         for (CompletableFuture<Frame> f : buffer) {
             try {
                 Frame response = f.get(3, TimeUnit.SECONDS);
-                System.out.println("Received frame: " + response);
-                System.out.println("Received frame payload: " + response.getPayload());
+                logger.debug("Received: " + response + ", Payload: " + response.getPayload());
             } catch (InterruptedException | ExecutionException | TimeoutException e) {
                 logger.error("Error getting response: ", e);
             }
+        }
+    }
+
+    private static void runContinuousSend(Client client) throws InterruptedException {
+        try {
+            int i = 1;
+            while (true) {
+                client.send(new Frame(FrameType.REQUEST, i, "test request"))
+                        .thenAccept(f -> logger.debug("Received: " + f + ", Payload: " + f.getPayload()));
+                i++;
+            }
+        } catch (ClientException cex) {
+            logger.error("Error: ", cex);
         }
     }
 }
