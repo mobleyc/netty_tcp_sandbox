@@ -24,7 +24,7 @@ public class ProxyServer {
     }
 
     public void run() throws Exception {
-        InternalLoggerFactory.setDefaultFactory(new Slf4JLoggerFactory());
+        InternalLoggerFactory.setDefaultFactory(Slf4JLoggerFactory.INSTANCE);
 
         InetSocketAddress remoteAddressA = new InetSocketAddress("localhost", 8080);
         InetSocketAddress remoteAddressB = new InetSocketAddress("localhost", 8081);

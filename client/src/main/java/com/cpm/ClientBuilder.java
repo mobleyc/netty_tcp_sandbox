@@ -35,6 +35,7 @@ public class ClientBuilder {
             CompletableFuture<Client> cf = connectAsync(group, address, connectTimeoutMilliseconds,
                     pendingRequestLimit, heartBeatIntervalSeconds, Runnables.doNothing());
             logger.debug("waiting on connection");
+            //TODO: Review this
             return Uninterruptibles.getUninterruptibly(cf);
         } catch (ExecutionException e) {
             throw new ClientException(e.getMessage());

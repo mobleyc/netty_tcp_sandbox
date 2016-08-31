@@ -187,6 +187,7 @@ public class DefaultClient implements Client {
             boolean isWritable = ctx.channel().isWritable();
             if (!isWritable) {
                 logger.debug("Received idle state event, but connection is closed. Heartbeat message will not be sent.");
+                return;
             }
 
             logger.debug("Sending heartbeat message");

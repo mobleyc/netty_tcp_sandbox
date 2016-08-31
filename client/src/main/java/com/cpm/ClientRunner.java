@@ -30,7 +30,7 @@ public class ClientRunner {
             port = Integer.parseInt(args[1]);
         }
 
-        InternalLoggerFactory.setDefaultFactory(new Slf4JLoggerFactory());
+        InternalLoggerFactory.setDefaultFactory(Slf4JLoggerFactory.INSTANCE);
 
         ClientBuilder builder = new ClientBuilder();
         Client client = null;
@@ -45,7 +45,7 @@ public class ClientRunner {
             logger.debug("Connected. Time to connect: " + watch.elapsed(TimeUnit.SECONDS) + " second(s)");
 
             //runSend(client, 110);
-            runContinuousSend(client);
+            //runContinuousSend(client);
         } finally {
             if (watch.isRunning()) {
                 watch.stop();
