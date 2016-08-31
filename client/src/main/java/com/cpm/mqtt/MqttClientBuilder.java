@@ -57,7 +57,7 @@ public class MqttClientBuilder {
                 });
 
                 ChannelPipeline p = ch.pipeline();
-                p.addLast(MQTT_CONNECT_HANDLER, new ClientConnectionSetupHandler(mqttConnection));
+                p.addLast(MQTT_CONNECT_HANDLER, new ClientConnectionSetupHandler(address, mqttConnection));
             } else {
                 logger.debug("TCP Connection failed.");
                 mqttConnection.completeExceptionally(new RuntimeException("Unable to connect to server."));
@@ -97,9 +97,11 @@ public class MqttClientBuilder {
     private class ClientConnectionSetupHandler extends SimpleChannelInboundHandler<MqttMessage> {
 
         private State state = State.DISCONNECTED;
+        private final InetSocketAddress address;
         private final CompletableFuture<MqttClient> connection;
 
-        public ClientConnectionSetupHandler(CompletableFuture<MqttClient> connection) {
+        public ClientConnectionSetupHandler(InetSocketAddress address, CompletableFuture<MqttClient> connection) {
+            this.address = address;
             this.connection = connection;
         }
 
@@ -126,7 +128,7 @@ public class MqttClientBuilder {
                 state = State.CONNECTED;
                 logger.debug("Received MQTT CONNACK");
 
-                connection.complete(new MqttClient(ctx.channel(), 1000/*pendingRequestLimit*/, KEEP_ALIVE_SECONDS));
+                connection.complete(new MqttClient(ctx.channel(), address, 1000/*pendingRequestLimit*/, KEEP_ALIVE_SECONDS));
                 ctx.pipeline().remove(MQTT_CONNECT_HANDLER);
                 logger.debug("Handler removed from channel: " + MQTT_CONNECT_HANDLER);
             }

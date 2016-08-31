@@ -3,10 +3,13 @@ package com.cpm.mqtt;
 
 import com.google.common.base.Stopwatch;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufAllocator;
+import io.netty.buffer.UnpooledByteBufAllocator;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
-import io.netty.handler.codec.mqtt.MqttQoS;
-import io.netty.handler.codec.mqtt.MqttTopicSubscription;
+import io.netty.handler.codec.mqtt.*;
+import io.netty.util.CharsetUtil;
 import io.netty.util.internal.logging.InternalLoggerFactory;
 import io.netty.util.internal.logging.Slf4JLoggerFactory;
 import org.slf4j.Logger;
@@ -45,6 +48,7 @@ public class MqttClientRunner {
         List<MqttTopicSubscription> topicSubscriptions = new LinkedList<>();
         topicSubscriptions.add(new MqttTopicSubscription("test/#", MqttQoS.AT_MOST_ONCE));
 
+        MqttClient client = null;
         try {
             InetSocketAddress address = new InetSocketAddress(host, port);
             int connectTimeoutMilliseconds = 5000;
@@ -52,13 +56,16 @@ public class MqttClientRunner {
             MqttClientBuilder builder = new MqttClientBuilder(group);
             CompletableFuture<MqttClient> clientF = builder.connect(address, connectTimeoutMilliseconds);
             //TODO: Add to config - MQTT connect timeout
-            MqttClient client = clientF.get(3, TimeUnit.SECONDS);
+            client = clientF.get(3, TimeUnit.SECONDS);
             watch.stop();
             logger.debug("Connected. Time to connect: " + watch.elapsed(TimeUnit.SECONDS) + " second(s)");
 
             CompletableFuture<Void> sub = client.subscribe(topicSubscriptions);
             //TODO: Add to config - Subscribe timeout
             sub.get(3, TimeUnit.SECONDS);
+
+            client.publish(createPublishMessage("test", "test from netty", false));
+            logger.debug("Published message");
 
             client.sync();
 
@@ -71,7 +78,24 @@ public class MqttClientRunner {
                 logger.debug("Time wait to connect: " + watch.elapsed(TimeUnit.SECONDS) + " second(s)");
             }
 
+            if(client != null) {
+                logger.debug("Disconnecting");
+                client.disconnect();
+            }
+
             group.shutdownGracefully();
         }
+    }
+
+    private static final ByteBufAllocator ALLOCATOR = new UnpooledByteBufAllocator(false);
+
+    private static MqttPublishMessage createPublishMessage(String topicName, String payload, boolean isRetained) {
+        MqttFixedHeader mqttFixedHeader =
+                new MqttFixedHeader(MqttMessageType.PUBLISH, false /*isDup*/, MqttQoS.AT_MOST_ONCE,
+                        isRetained, 0 /*remainingLength*/);
+        MqttPublishVariableHeader mqttPublishVariableHeader = new MqttPublishVariableHeader(topicName, 456);
+        ByteBuf payloadBuffer =  ALLOCATOR.buffer();
+        payloadBuffer.writeBytes(payload.getBytes(CharsetUtil.UTF_8));
+        return new MqttPublishMessage(mqttFixedHeader, mqttPublishVariableHeader, payloadBuffer);
     }
 }
