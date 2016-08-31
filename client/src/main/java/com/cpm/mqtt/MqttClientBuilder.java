@@ -37,9 +37,9 @@ public class MqttClientBuilder {
     /**
      * Connect asynchronously to an MQTT server.
      *
-     * @param address
-     * @param connectTimeoutMilliseconds
-     * @return
+     * @param address - Broker address to connect to
+     * @param connectTimeoutMilliseconds - IO connection timeout
+     * @return - A future for MqttClient
      */
     public CompletableFuture<MqttClient> connect(InetSocketAddress address, int connectTimeoutMilliseconds) {
         Bootstrap b = createBootstrap(group, address, connectTimeoutMilliseconds);
@@ -49,13 +49,7 @@ public class MqttClientBuilder {
         ChannelFuture tcpConnect = b.connect();
         tcpConnect.addListener((ChannelFutureListener) future -> {
             if (future.isSuccess()) {
-                logger.debug("TCP Connection sent to OS.");
-
                 Channel ch = future.channel();
-                ch.closeFuture().addListener((ChannelFutureListener) f -> {
-                    logger.debug("Closing channel");
-                });
-
                 ChannelPipeline p = ch.pipeline();
                 p.addLast(MQTT_CONNECT_HANDLER, new ClientConnectionSetupHandler(address, mqttConnection));
             } else {
@@ -84,19 +78,12 @@ public class MqttClientBuilder {
         return b;
     }
 
-    private enum State {
-        DISCONNECTED,
-        CONNECTING,
-        CONNECTED
-    }
-
     /**
      * Handler used to setup an MQTT connection once a TCP connection is established. The handler
      * will remove itself from the channel pipeline once an MQTT CONNACK is received by the server.
      */
     private class ClientConnectionSetupHandler extends SimpleChannelInboundHandler<MqttMessage> {
 
-        private State state = State.DISCONNECTED;
         private final InetSocketAddress address;
         private final CompletableFuture<MqttClient> connection;
 
@@ -111,11 +98,8 @@ public class MqttClientBuilder {
 
             MqttConnectMessage connectMsg = createConnectMessage(MqttVersion.MQTT_3_1_1);
             ctx.writeAndFlush(connectMsg).addListener((ChannelFutureListener) conFuture -> {
-                if (conFuture.isSuccess()) {
-                    state = State.CONNECTING;
-                    logger.debug("MQTT CONNECT message sent to OS.");
-                } else {
-                    logger.debug("MQTT CONNECT message send failed.");
+                if (!conFuture.isSuccess()) {
+                    logger.debug("MQTT CONNECT message send to OS failed.");
                 }
             });
         }
@@ -125,7 +109,6 @@ public class MqttClientBuilder {
             logger.debug("Channel read. Message Type: " + mqttMessage.fixedHeader().messageType());
 
             if(mqttMessage.fixedHeader().messageType() == MqttMessageType.CONNACK) {
-                state = State.CONNECTED;
                 logger.debug("Received MQTT CONNACK");
 
                 connection.complete(new MqttClient(ctx.channel(), address, 1000/*pendingRequestLimit*/, KEEP_ALIVE_SECONDS));
